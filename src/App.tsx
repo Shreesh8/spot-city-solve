@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { IssueProvider } from "@/contexts/IssueContext";
 import Index from "./pages/Index";
+import Map from "./pages/Map";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -32,6 +33,7 @@ const App = () => (
               <main className="flex-grow">
                 <Routes>
                   <Route path="/" element={<Index />} />
+                  <Route path="/map" element={<Map />} />
                   <Route path="/login" element={<Login />} />
                   <Route path="/signup" element={<Signup />} />
                   <Route path="/report" element={<Report />} />
