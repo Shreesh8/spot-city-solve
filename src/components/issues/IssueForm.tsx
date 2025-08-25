@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -17,13 +17,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
-// Fix the mapboxgl import issue
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-import { useEffect, useRef } from 'react';
-
-// Set the mapbox token directly
-mapboxgl.accessToken = 'pk.eyJ1IjoiZGVtby11c2VyIiwiYSI6ImNscHc5cGh5bzAzOG0ya3FrYW43OTF6MnMifQ.SyqsT74mxBGDCzM1Nno03g';
+// Google Maps imports
+import { Loader } from '@googlemaps/js-api-loader';
 
 const formSchema = z.object({
   title: z.string().min(3, {
@@ -57,8 +52,9 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [location, setLocation] = useState<{ latitude: number; longitude: number; address?: string } | null>(null);
   const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<mapboxgl.Map | null>(null);
+  const map = useRef<any>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [apiKey, setApiKey] = useState<string>('');
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -76,83 +72,108 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
   });
 
   useEffect(() => {
-    if (!map.current && mapContainer.current) {
-      map.current = new mapboxgl.Map({
-        container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/streets-v11',
-        center: [-74.0060, 40.7128], // New York City coordinates
-        zoom: 12,
-      });
+    const initializeMap = async () => {
+      if (!apiKey || !mapContainer.current) return;
+      
+      try {
+        const loader = new Loader({
+          apiKey: apiKey,
+          version: "weekly",
+          libraries: ["places", "geometry"]
+        });
 
-      // Add navigation controls (zoom and rotation)
-      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+        const { Map } = await loader.importLibrary("maps") as any;
+        const { AdvancedMarkerElement } = await loader.importLibrary("marker") as any;
 
-      // Add geolocate control
-      map.current.addControl(
-        new mapboxgl.GeolocateControl({
-          positionOptions: {
-            enableHighAccuracy: true,
-          },
-          trackUserLocation: true,
-          showUserHeading: true,
-        }),
-        'top-right'
-      );
+        // Default to Ayodhya coordinates
+        const center = { lat: 26.7922, lng: 82.1998 };
 
-      map.current.on('load', () => {
+        map.current = new Map(mapContainer.current, {
+          center: center,
+          zoom: 13,
+          mapId: "DEMO_MAP_ID",
+          disableDefaultUI: false,
+          zoomControl: true,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: false,
+        });
+
         setMapLoaded(true);
-      });
 
-      map.current.on('click', (e) => {
-        const newLocation = {
-          longitude: e.lngLat.lng,
-          latitude: e.lngLat.lat,
-        };
-        setLocation(newLocation);
-        form.setValue('location.latitude', newLocation.latitude);
-        form.setValue('location.longitude', newLocation.longitude);
+        // Add click listener to select location
+        map.current.addListener('click', (e: any) => {
+          const lat = e.latLng.lat();
+          const lng = e.latLng.lng();
+          
+          const newLocation = {
+            latitude: lat,
+            longitude: lng,
+          };
+          
+          setLocation(newLocation);
+          form.setValue('location.latitude', lat);
+          form.setValue('location.longitude', lng);
 
-        // Clear existing markers
-        const existingMarkers = document.querySelectorAll('.mapboxgl-marker');
-        existingMarkers.forEach(marker => marker.remove());
+          // Clear existing markers and add new one
+          if (map.current.currentMarker) {
+            map.current.currentMarker.setMap(null);
+          }
 
-        // Add a marker to the map at the clicked location
-        new mapboxgl.Marker()
-          .setLngLat([newLocation.longitude, newLocation.latitude])
-          .addTo(map.current!);
-      });
-    }
+          map.current.currentMarker = new AdvancedMarkerElement({
+            map: map.current,
+            position: { lat, lng },
+            title: "Selected Location"
+          });
+        });
 
-    // Clean up on unmount
-    return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
+      } catch (error) {
+        console.error('Error initializing Google Maps:', error);
       }
     };
-  }, []);
+
+    initializeMap();
+
+    return () => {
+      if (map.current?.currentMarker) {
+        map.current.currentMarker.setMap(null);
+      }
+    };
+  }, [apiKey, form]);
 
   useEffect(() => {
-    if (defaultValues && map.current && mapLoaded) {
-      const { latitude, longitude } = defaultValues.location;
-      setLocation({ latitude, longitude });
+    const updateMapLocation = async () => {
+      if (defaultValues && map.current && mapLoaded && apiKey) {
+        const { latitude, longitude } = defaultValues.location;
+        setLocation({ latitude, longitude });
 
-      // Clear existing markers
-      const existingMarkers = document.querySelectorAll('.mapboxgl-marker');
-      existingMarkers.forEach(marker => marker.remove());
+        const loader = new Loader({
+          apiKey: apiKey,
+          version: "weekly",
+          libraries: ["marker"]
+        });
 
-      // Fly to the location and add a marker
-      map.current.flyTo({
-        center: [longitude, latitude],
-        zoom: 15,
-        essential: true // this animation is considered essential with respect to prefers-reduced-motion
-      });
+        const { AdvancedMarkerElement } = await loader.importLibrary("marker") as any;
 
-      new mapboxgl.Marker()
-        .setLngLat([longitude, latitude])
-        .addTo(map.current!);
-    }
-  }, [defaultValues, mapLoaded]);
+        // Clear existing marker
+        if (map.current.currentMarker) {
+          map.current.currentMarker.setMap(null);
+        }
+
+        // Pan to the location and add a marker
+        map.current.panTo({ lat: latitude, lng: longitude });
+        map.current.setZoom(15);
+
+        map.current.currentMarker = new AdvancedMarkerElement({
+          map: map.current,
+          position: { lat: latitude, lng: longitude },
+          title: "Issue Location"
+        });
+      }
+    };
+
+    updateMapLocation();
+  }, [defaultValues, mapLoaded, apiKey]);
 
   async function onSubmitHandler(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
@@ -335,7 +356,23 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
             {/* Map Preview */}
             <div className="w-full">
               <Label>Select Location on Map</Label>
-              <div ref={mapContainer} className="h-64 rounded" />
+              {!apiKey && (
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                  <Label htmlFor="api-key">Google Maps API Key</Label>
+                  <Input
+                    id="api-key"
+                    type="text"
+                    placeholder="Enter your Google Maps API key"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    className="mt-2"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Get your key from <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Google Cloud Console</a>
+                  </p>
+                </div>
+              )}
+              <div ref={mapContainer} className="h-64 rounded border" />
             </div>
 
             <FormField
