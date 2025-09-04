@@ -58,6 +58,8 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
   const [mapLoaded, setMapLoaded] = useState(false);
   const [photos, setPhotos] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const autocomplete = useRef<any>(null);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -116,6 +118,7 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
 
         const { Map } = await loader.importLibrary("maps") as any;
         const { AdvancedMarkerElement } = await loader.importLibrary("marker") as any;
+        const { Autocomplete } = await loader.importLibrary("places") as any;
 
         // Default to Ayodhya coordinates
         const center = { lat: 26.7922, lng: 82.1998 };
@@ -132,6 +135,49 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
         });
 
         setMapLoaded(true);
+
+        // Initialize Places Autocomplete
+        if (searchInputRef.current) {
+          autocomplete.current = new Autocomplete(searchInputRef.current, {
+            types: ['geocode'],
+            fields: ['place_id', 'geometry', 'name', 'formatted_address']
+          });
+
+          autocomplete.current.addListener('place_changed', () => {
+            const place = autocomplete.current.getPlace();
+            
+            if (place.geometry && place.geometry.location) {
+              const lat = place.geometry.location.lat();
+              const lng = place.geometry.location.lng();
+              
+              const newLocation = {
+                latitude: lat,
+                longitude: lng,
+                address: place.formatted_address || place.name || 'Selected Location'
+              };
+              
+              setLocation(newLocation);
+              form.setValue('location.latitude', lat);
+              form.setValue('location.longitude', lng);
+              form.setValue('location.address', newLocation.address);
+
+              // Update map center and marker
+              map.current.panTo({ lat, lng });
+              map.current.setZoom(15);
+
+              // Clear existing marker and add new one
+              if (map.current.currentMarker) {
+                map.current.currentMarker.setMap(null);
+              }
+
+              map.current.currentMarker = new AdvancedMarkerElement({
+                map: map.current,
+                position: { lat, lng },
+                title: newLocation.address
+              });
+            }
+          });
+        }
 
         // Add click listener to select location
         map.current.addListener('click', (e: any) => {
@@ -398,6 +444,22 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
                   </p>
                 </div>
               )}
+              
+              {/* Location Search Input */}
+              {GOOGLE_MAPS_API_KEY && GOOGLE_MAPS_API_KEY !== 'YOUR_GOOGLE_MAPS_API_KEY_HERE' && (
+                <div className="mb-4">
+                  <Input
+                    ref={searchInputRef}
+                    type="text"
+                    placeholder="Search for a location..."
+                    className="w-full"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Type a location name or address, then click on the map to fine-tune
+                  </p>
+                </div>
+              )}
+              
               <div ref={mapContainer} className="h-64 rounded border" />
             </div>
 
