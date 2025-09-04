@@ -31,7 +31,7 @@ const Navbar = () => {
   };
 
   const navLinks = [
-    { name: "Map", path: "/", icon: <Map className="mr-2 h-4 w-4" /> },
+    { name: "Map", path: "/map", icon: <Map className="mr-2 h-4 w-4" /> },
     { name: "My Reports", path: "/my-reports", icon: <ClipboardList className="mr-2 h-4 w-4" />, requiresAuth: true },
   ];
 
