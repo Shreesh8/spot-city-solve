@@ -48,6 +48,15 @@ export class ImageVerificationService {
     }
   }
 
+  static async preload(): Promise<boolean> {
+    await this.initializeClassifier();
+    return !!this.classifier;
+  }
+
+  static isReady(): boolean {
+    return this.initialized && !!this.classifier;
+  }
+
   private static generateLabels(description: string, category: string): string[] {
     // Base labels for different categories
     const categoryLabels: { [key: string]: string[] } = {
@@ -94,7 +103,7 @@ export class ImageVerificationService {
       
       if (!this.classifier) {
         return {
-          isValid: true, // Allow upload if classifier fails to initialize
+          isValid: false, // Block upload if classifier fails to initialize
           confidence: 0,
           reason: 'Image verification unavailable'
         };
@@ -136,9 +145,9 @@ export class ImageVerificationService {
     } catch (error) {
       console.error('Image verification error:', error);
       return {
-        isValid: true, // Allow upload if verification fails
+        isValid: false, // Block upload if verification fails
         confidence: 0,
-        reason: 'Verification failed - image allowed by default'
+        reason: 'Verification failed - please try again'
       };
     }
   }

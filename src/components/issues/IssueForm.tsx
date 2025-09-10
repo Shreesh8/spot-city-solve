@@ -3,6 +3,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useToast } from "@/components/ui/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,6 +61,7 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
   const [photos, setPhotos] = useState<string[]>([]);
   const [photoVerifications, setPhotoVerifications] = useState<{[key: number]: {isValid: boolean; confidence: number; reason?: string}}>({});
   const [isVerifying, setIsVerifying] = useState(false);
+  const [verifierReady, setVerifierReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autocomplete = useRef<any>(null);
@@ -132,25 +134,36 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
               description: verification.reason || `Image verified with ${verification.confidence}% confidence`,
             });
           } else {
+            // Remove and prompt re-upload
+            if (fileInputRef.current) fileInputRef.current.value = "";
             toast({
               variant: "destructive",
-              title: "Image Verification Failed",
+              title: "Irrelevant image detected",
               description: verification.reason || "The uploaded image does not match your issue description.",
+              action: (
+                <ToastAction altText="Re-upload" onClick={() => fileInputRef.current?.click()}>
+                  Re-upload
+                </ToastAction>
+              ),
             });
+            // Auto-open after a moment to guide the user
+            setTimeout(() => fileInputRef.current?.click(), 600);
           }
         } catch (error) {
           console.error('Verification error:', error);
-          // Allow upload if verification fails
-          setPhotos(prev => {
-            const updated = [...prev, result].slice(0, 2);
-            form.setValue('photos', updated);
-            return updated;
-          });
-          
+          // Block upload on error and prompt re-upload
+          if (fileInputRef.current) fileInputRef.current.value = "";
           toast({
-            title: "Verification Unavailable",
-            description: "Image uploaded without verification.",
+            variant: "destructive",
+            title: "Verification unavailable",
+            description: "Could not verify the image. Please try uploading again.",
+            action: (
+              <ToastAction altText="Re-upload" onClick={() => fileInputRef.current?.click()}>
+                Re-upload
+              </ToastAction>
+            ),
           });
+          setTimeout(() => fileInputRef.current?.click(), 600);
         }
         
         if (i === newPhotos.length - 1) {
