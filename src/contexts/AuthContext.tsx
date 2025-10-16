@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/integrations/firebase/client";
+import { supabase } from "@/integrations/supabase/client";
 import { 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -37,13 +38,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Set up Firebase auth state listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Fetch user role from Supabase
+        const { data: roleData, error } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', firebaseUser.uid)
+          .maybeSingle();
+
         setUser({
           id: firebaseUser.uid,
           email: firebaseUser.email || '',
           name: firebaseUser.displayName || undefined,
-          role: 'reporter'
+          role: roleData?.role || 'reporter'
         });
       } else {
         setUser(null);
@@ -86,6 +94,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await updateProfile(userCredential.user, {
         displayName: name
       });
+
+      // Assign default 'reporter' role in Supabase
+      await supabase
+        .from('user_roles')
+        .insert({
+          user_id: userCredential.user.uid,
+          role: 'reporter'
+        });
 
       toast({
         title: "Account created",
