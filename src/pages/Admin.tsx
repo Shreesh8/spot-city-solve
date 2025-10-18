@@ -3,6 +3,7 @@ import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import AdminIssueTable from "@/components/admin/AdminIssueTable";
+import AdminUserTable from "@/components/admin/AdminUserTable";
 import { useIssues } from "@/contexts/IssueContext";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -12,7 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Users } from "lucide-react";
 
 const Admin = () => {
   const { user, isAdmin } = useAuth();
@@ -92,36 +93,62 @@ const Admin = () => {
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Issue Management</CardTitle>
-          <CardDescription>
-            View, filter, and update status for all reported issues
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="all">
-            <TabsList className="mb-4">
-              <TabsTrigger value="all">All Issues</TabsTrigger>
-              <TabsTrigger value="open">Open</TabsTrigger>
-              <TabsTrigger value="in_progress">In Progress</TabsTrigger>
-              <TabsTrigger value="resolved">Resolved</TabsTrigger>
-            </TabsList>
-            <TabsContent value="all">
-              <AdminIssueTable />
-            </TabsContent>
-            <TabsContent value="open">
-              <AdminIssueTable />
-            </TabsContent>
-            <TabsContent value="in_progress">
-              <AdminIssueTable />
-            </TabsContent>
-            <TabsContent value="resolved">
-              <AdminIssueTable />
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue="issues" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="issues">Issue Management</TabsTrigger>
+          <TabsTrigger value="users">
+            <Users className="h-4 w-4 mr-2" />
+            User Management
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="issues">
+          <Card>
+            <CardHeader>
+              <CardTitle>Issue Management</CardTitle>
+              <CardDescription>
+                View, filter, and update status for all reported issues
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Tabs defaultValue="all">
+                <TabsList className="mb-4">
+                  <TabsTrigger value="all">All Issues</TabsTrigger>
+                  <TabsTrigger value="open">Open</TabsTrigger>
+                  <TabsTrigger value="in_progress">In Progress</TabsTrigger>
+                  <TabsTrigger value="resolved">Resolved</TabsTrigger>
+                </TabsList>
+                <TabsContent value="all">
+                  <AdminIssueTable />
+                </TabsContent>
+                <TabsContent value="open">
+                  <AdminIssueTable />
+                </TabsContent>
+                <TabsContent value="in_progress">
+                  <AdminIssueTable />
+                </TabsContent>
+                <TabsContent value="resolved">
+                  <AdminIssueTable />
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="users">
+          <Card>
+            <CardHeader>
+              <CardTitle>User Management</CardTitle>
+              <CardDescription>
+                View all users and manage their roles
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AdminUserTable />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
