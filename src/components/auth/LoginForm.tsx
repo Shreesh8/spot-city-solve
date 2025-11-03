@@ -7,12 +7,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Chrome } from "lucide-react";
 
 const LoginForm = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { login, signInWithGoogle } = useAuth();
   const { toast } = useToast();
@@ -23,7 +25,7 @@ const LoginForm = () => {
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
+      await login(email, password, rememberMe);
       navigate("/");
     } catch (error) {
       // Error is already handled in the login function with toast
@@ -34,7 +36,7 @@ const LoginForm = () => {
 
   const handleGoogleLogin = async () => {
     try {
-      await signInWithGoogle();
+      await signInWithGoogle(rememberMe);
     } catch (error) {
       // Error is already handled in the signInWithGoogle function
     }
@@ -99,6 +101,20 @@ const LoginForm = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="remember"
+              checked={rememberMe}
+              onCheckedChange={(checked) => setRememberMe(checked as boolean)}
+            />
+            <Label
+              htmlFor="remember"
+              className="text-sm font-normal cursor-pointer"
+            >
+              Remember me (stay logged in)
+            </Label>
           </div>
 
           <Button

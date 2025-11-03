@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { auth } from "@/integrations/firebase/client";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,8 +9,13 @@ import {
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  setPersistence,
+  browserSessionPersistence,
+  browserLocalPersistence
 } from "firebase/auth";
+
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 type AuthUser = {
   id: string;
@@ -22,9 +27,9 @@ type AuthUser = {
 interface AuthContextType {
   user: AuthUser;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   signup: (name: string, email: string, password: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
   isAdmin: () => boolean;
 }
@@ -34,7 +39,49 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser>(null);
   const [loading, setLoading] = useState(true);
+  const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const { toast } = useToast();
+
+  // Track user activity
+  const updateActivity = useCallback(() => {
+    setLastActivity(Date.now());
+  }, []);
+
+  // Set up activity listeners
+  useEffect(() => {
+    if (!user) return;
+
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
+    events.forEach(event => {
+      window.addEventListener(event, updateActivity);
+    });
+
+    return () => {
+      events.forEach(event => {
+        window.removeEventListener(event, updateActivity);
+      });
+    };
+  }, [user, updateActivity]);
+
+  // Check for session timeout
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      const timeSinceActivity = Date.now() - lastActivity;
+      
+      if (timeSinceActivity >= SESSION_TIMEOUT) {
+        toast({
+          title: "Session expired",
+          description: "You've been logged out due to inactivity",
+          variant: "destructive",
+        });
+        logout();
+      }
+    }, 60000); // Check every minute
+
+    return () => clearInterval(interval);
+  }, [user, lastActivity]);
 
   // Set up Firebase auth state listener
   useEffect(() => {
@@ -86,11 +133,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => unsubscribe();
   }, [toast]);
 
-  const login = async (email: string, password: string): Promise<void> => {
+  const login = async (email: string, password: string, rememberMe: boolean = false): Promise<void> => {
     try {
       setLoading(true);
       
+      // Set persistence based on remember me option
+      await setPersistence(
+        auth, 
+        rememberMe ? browserLocalPersistence : browserSessionPersistence
+      );
+      
       await signInWithEmailAndPassword(auth, email, password);
+      
+      setLastActivity(Date.now());
 
       toast({
         title: "Logged in successfully",
@@ -160,12 +215,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const signInWithGoogle = async (): Promise<void> => {
+  const signInWithGoogle = async (rememberMe: boolean = false): Promise<void> => {
     try {
       setLoading(true);
       
+      // Set persistence based on remember me option
+      await setPersistence(
+        auth, 
+        rememberMe ? browserLocalPersistence : browserSessionPersistence
+      );
+      
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
+      
+      setLastActivity(Date.now());
 
       toast({
         title: "Signed in with Google",
