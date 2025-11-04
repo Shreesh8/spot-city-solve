@@ -1,6 +1,8 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "./AuthContext";
 
 export type IssueCategory = 
   | "road_damage" 
@@ -27,9 +29,48 @@ export interface Issue {
   photos: string[];
   reporterId: string;
   reporterName: string;
+  reporterEmail?: string;
+  isPublic: boolean;
   createdAt: string;
   updatedAt: string;
 }
+
+// Helper to convert DB format to app format
+const dbToIssue = (dbIssue: any): Issue => ({
+  id: dbIssue.id,
+  title: dbIssue.title,
+  description: dbIssue.description,
+  category: dbIssue.category as IssueCategory,
+  status: dbIssue.status as IssueStatus,
+  location: {
+    latitude: dbIssue.location_latitude,
+    longitude: dbIssue.location_longitude,
+    address: dbIssue.location_address,
+  },
+  photos: dbIssue.photos || [],
+  reporterId: dbIssue.reporter_id,
+  reporterName: dbIssue.reporter_name,
+  reporterEmail: dbIssue.reporter_email,
+  isPublic: dbIssue.is_public,
+  createdAt: dbIssue.created_at,
+  updatedAt: dbIssue.updated_at,
+});
+
+// Helper to convert app format to DB format
+const issueToDb = (issue: Partial<Issue>) => ({
+  title: issue.title,
+  description: issue.description,
+  category: issue.category,
+  status: issue.status,
+  location_latitude: issue.location?.latitude,
+  location_longitude: issue.location?.longitude,
+  location_address: issue.location?.address,
+  photos: issue.photos,
+  reporter_id: issue.reporterId,
+  reporter_name: issue.reporterName,
+  reporter_email: issue.reporterEmail,
+  is_public: issue.isPublic,
+});
 
 interface IssueContextType {
   issues: Issue[];
@@ -43,162 +84,127 @@ interface IssueContextType {
 
 const IssueContext = createContext<IssueContextType | undefined>(undefined);
 
-// Sample data for demonstration
-const sampleIssues: Issue[] = [
-  {
-    id: "1",
-    title: "Large pothole on Main Street",
-    description: "There's a dangerous pothole in the middle of Main Street near the intersection with Oak Avenue. It's been growing for weeks and now it's about 2 feet wide.",
-    category: "road_damage",
-    status: "open",
-    location: {
-      latitude: 40.712776,
-      longitude: -74.005974,
-      address: "123 Main St, New York, NY 10001",
-    },
-    photos: ["https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?w=800"],
-    reporterId: "2",
-    reporterName: "Regular User",
-    createdAt: "2023-05-15T14:22:00Z",
-    updatedAt: "2023-05-15T14:22:00Z",
-  },
-  {
-    id: "2",
-    title: "Broken streetlight",
-    description: "Streetlight near the community park has been out for over a week, making the area unsafe at night.",
-    category: "lighting",
-    status: "in_progress",
-    location: {
-      latitude: 40.714776,
-      longitude: -74.003974,
-      address: "45 Park Ave, New York, NY 10002",
-    },
-    photos: ["https://images.unsplash.com/photo-1589463349208-93b2dd8af50a?w=800"],
-    reporterId: "2",
-    reporterName: "Regular User",
-    createdAt: "2023-05-10T09:45:00Z",
-    updatedAt: "2023-05-12T16:30:00Z",
-  },
-  {
-    id: "3",
-    title: "Overflowing trash bin",
-    description: "The trash bin at the corner of Pine and 5th has been overflowing for days. It's attracting pests and creating an unpleasant smell.",
-    category: "sanitation",
-    status: "resolved",
-    location: {
-      latitude: 40.718776,
-      longitude: -74.009974,
-      address: "Corner of Pine St and 5th Ave, New York, NY 10003",
-    },
-    photos: ["https://images.unsplash.com/photo-1605600659453-128bfdb0912a?w=800"],
-    reporterId: "2",
-    reporterName: "Regular User",
-    createdAt: "2023-05-05T11:15:00Z",
-    updatedAt: "2023-05-07T08:20:00Z",
-  },
-  {
-    id: "4",
-    title: "Fallen tree blocking sidewalk",
-    description: "A tree has fallen and is completely blocking the sidewalk on Cedar Street. Pedestrians are forced to walk in the road which is dangerous.",
-    category: "vegetation",
-    status: "in_progress",
-    location: {
-      latitude: 40.717776,
-      longitude: -74.001974,
-      address: "88 Cedar St, New York, NY 10006",
-    },
-    photos: ["https://images.unsplash.com/photo-1559333086-b0a56225a93c?w=800"],
-    reporterId: "2",
-    reporterName: "Regular User",
-    createdAt: "2023-05-08T16:40:00Z",
-    updatedAt: "2023-05-09T10:15:00Z",
-  },
-];
-
 export const IssueProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   useEffect(() => {
-    // Load from localStorage or use sample data
-    const savedIssues = localStorage.getItem("civicspot_issues");
-    if (savedIssues) {
-      setIssues(JSON.parse(savedIssues));
-    } else {
-      setIssues(sampleIssues);
-      localStorage.setItem("civicspot_issues", JSON.stringify(sampleIssues));
-    }
-    setLoading(false);
-  }, []);
+    fetchIssues();
+  }, [user]);
 
-  const addIssue = (issue: Omit<Issue, "id" | "createdAt" | "updatedAt">) => {
-    const newIssue: Issue = {
-      ...issue,
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+  const fetchIssues = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('issues')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    const updatedIssues = [...issues, newIssue];
-    setIssues(updatedIssues);
-    localStorage.setItem("civicspot_issues", JSON.stringify(updatedIssues));
-    
-    toast({
-      title: "Issue Reported",
-      description: "Thank you for reporting this issue!",
-    });
-  };
+      if (error) throw error;
 
-  const updateIssue = (id: string, updatedData: Partial<Issue>) => {
-    const index = issues.findIndex(issue => issue.id === id);
-    
-    if (index === -1) {
+      if (data) {
+        setIssues(data.map(dbToIssue));
+      }
+    } catch (error: any) {
+      console.error('Error fetching issues:', error);
       toast({
-        title: "Error",
-        description: "Issue not found",
+        title: "Error loading issues",
+        description: error.message,
         variant: "destructive",
       });
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    const updatedIssue = {
-      ...issues[index],
-      ...updatedData,
-      updatedAt: new Date().toISOString(),
-    };
-
-    const updatedIssues = [...issues];
-    updatedIssues[index] = updatedIssue;
-    
-    setIssues(updatedIssues);
-    localStorage.setItem("civicspot_issues", JSON.stringify(updatedIssues));
-    
-    toast({
-      title: "Issue Updated",
-      description: "The issue has been updated successfully",
-    });
   };
 
-  const deleteIssue = (id: string) => {
-    const updatedIssues = issues.filter(issue => issue.id !== id);
-    
-    if (updatedIssues.length === issues.length) {
+  const addIssue = async (issue: Omit<Issue, "id" | "createdAt" | "updatedAt">) => {
+    try {
+      const dbIssue = issueToDb(issue);
+      
+      const { data, error } = await supabase
+        .from('issues')
+        .insert([dbIssue])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const newIssue = dbToIssue(data);
+        setIssues([newIssue, ...issues]);
+        
+        toast({
+          title: "Issue Reported",
+          description: "Thank you for reporting this issue!",
+        });
+      }
+    } catch (error: any) {
+      console.error('Error adding issue:', error);
       toast({
-        title: "Error",
-        description: "Issue not found",
+        title: "Error reporting issue",
+        description: error.message,
         variant: "destructive",
       });
-      return;
     }
-    
-    setIssues(updatedIssues);
-    localStorage.setItem("civicspot_issues", JSON.stringify(updatedIssues));
-    
-    toast({
-      title: "Issue Deleted",
-      description: "The issue has been deleted successfully",
-    });
+  };
+
+  const updateIssue = async (id: string, updatedData: Partial<Issue>) => {
+    try {
+      const dbUpdate = issueToDb(updatedData);
+      
+      const { data, error } = await supabase
+        .from('issues')
+        .update(dbUpdate)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        const updatedIssue = dbToIssue(data);
+        setIssues(issues.map(issue => issue.id === id ? updatedIssue : issue));
+        
+        toast({
+          title: "Issue Updated",
+          description: "The issue has been updated successfully",
+        });
+      }
+    } catch (error: any) {
+      console.error('Error updating issue:', error);
+      toast({
+        title: "Error updating issue",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const deleteIssue = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('issues')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      setIssues(issues.filter(issue => issue.id !== id));
+      
+      toast({
+        title: "Issue Deleted",
+        description: "The issue has been deleted successfully",
+      });
+    } catch (error: any) {
+      console.error('Error deleting issue:', error);
+      toast({
+        title: "Error deleting issue",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   const getIssue = (id: string) => {

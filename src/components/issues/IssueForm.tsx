@@ -431,16 +431,18 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
       const issueData = {
         title: values.title,
         description: values.description,
-        category: values.category, // This is now non-optional as required by the form schema
+        category: values.category,
         reporterId: user.id,
         reporterName: user.name || 'Anonymous',
+        reporterEmail: user.email,
         status: 'open' as IssueStatus,
         location: {
           latitude: values.location.latitude,
           longitude: values.location.longitude,
           address: values.location.address || 'No address provided',
         },
-        photos: photos, // Use the photos state
+        photos: photos,
+        isPublic: values.isPublic,
       };
 
       if (issueId) {

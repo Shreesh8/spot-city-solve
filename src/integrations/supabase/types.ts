@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      issues: {
+        Row: {
+          category: string
+          created_at: string | null
+          description: string
+          id: string
+          is_public: boolean | null
+          location_address: string | null
+          location_latitude: number
+          location_longitude: number
+          photos: string[] | null
+          reporter_email: string | null
+          reporter_id: string
+          reporter_name: string
+          status: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          description: string
+          id?: string
+          is_public?: boolean | null
+          location_address?: string | null
+          location_latitude: number
+          location_longitude: number
+          photos?: string[] | null
+          reporter_email?: string | null
+          reporter_id: string
+          reporter_name: string
+          status?: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          description?: string
+          id?: string
+          is_public?: boolean | null
+          location_address?: string | null
+          location_latitude?: number
+          location_longitude?: number
+          photos?: string[] | null
+          reporter_email?: string | null
+          reporter_id?: string
+          reporter_name?: string
+          status?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string | null
