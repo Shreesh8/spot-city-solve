@@ -1,18 +1,21 @@
 
-import React from "react";
+import React, { useState } from "react";
 import { useIssues } from "@/contexts/IssueContext";
 import { useAuth } from "@/contexts/AuthContext";
 import IssueCard from "@/components/issues/IssueCard";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { IssueStatus } from "@/contexts/IssueContext";
+import { IssueStatus, Issue } from "@/contexts/IssueContext";
 import { Plus } from "lucide-react";
+
+const ITEMS_PER_PAGE = 12;
 
 const MyReports = () => {
   const { issues } = useIssues();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Redirect if not logged in
   React.useEffect(() => {
@@ -33,6 +36,46 @@ const MyReports = () => {
   const inProgressIssues = getFilteredIssues("in_progress");
   const resolvedIssues = getFilteredIssues("resolved");
 
+  // Pagination helper
+  const getPaginatedIssues = (issues: Issue[], page: number) => {
+    const startIndex = (page - 1) * ITEMS_PER_PAGE;
+    const endIndex = startIndex + ITEMS_PER_PAGE;
+    return issues.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = (totalItems: number) => {
+    return Math.ceil(totalItems / ITEMS_PER_PAGE);
+  };
+
+  const renderPagination = (totalItems: number, page: number, onPageChange: (page: number) => void) => {
+    const totalPages = getTotalPages(totalItems);
+    if (totalPages <= 1) return null;
+
+    return (
+      <div className="flex items-center justify-center gap-2 mt-6">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page - 1)}
+          disabled={page === 1}
+        >
+          Previous
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          Page {page} of {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page + 1)}
+          disabled={page === totalPages}
+        >
+          Next
+        </Button>
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
@@ -50,7 +93,7 @@ const MyReports = () => {
         </Link>
       </div>
 
-      <Tabs defaultValue="all">
+      <Tabs defaultValue="all" onValueChange={() => setCurrentPage(1)}>
         <TabsList className="mb-4">
           <TabsTrigger value="all">All ({userIssues.length})</TabsTrigger>
           <TabsTrigger value="open">
@@ -66,11 +109,14 @@ const MyReports = () => {
 
         <TabsContent value="all">
           {userIssues.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {userIssues.map((issue) => (
-                <IssueCard key={issue.id} issue={issue} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {getPaginatedIssues(userIssues, currentPage).map((issue) => (
+                  <IssueCard key={issue.id} issue={issue} />
+                ))}
+              </div>
+              {renderPagination(userIssues.length, currentPage, setCurrentPage)}
+            </>
           ) : (
             <div className="text-center p-8">
               <h3 className="text-lg font-medium mb-2">No issues found</h3>
@@ -86,11 +132,14 @@ const MyReports = () => {
 
         <TabsContent value="open">
           {openIssues.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {openIssues.map((issue) => (
-                <IssueCard key={issue.id} issue={issue} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {getPaginatedIssues(openIssues, currentPage).map((issue) => (
+                  <IssueCard key={issue.id} issue={issue} />
+                ))}
+              </div>
+              {renderPagination(openIssues.length, currentPage, setCurrentPage)}
+            </>
           ) : (
             <p className="text-center text-muted-foreground p-8">
               No open issues found
@@ -100,11 +149,14 @@ const MyReports = () => {
 
         <TabsContent value="in_progress">
           {inProgressIssues.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {inProgressIssues.map((issue) => (
-                <IssueCard key={issue.id} issue={issue} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {getPaginatedIssues(inProgressIssues, currentPage).map((issue) => (
+                  <IssueCard key={issue.id} issue={issue} />
+                ))}
+              </div>
+              {renderPagination(inProgressIssues.length, currentPage, setCurrentPage)}
+            </>
           ) : (
             <p className="text-center text-muted-foreground p-8">
               No issues in progress
@@ -114,11 +166,14 @@ const MyReports = () => {
 
         <TabsContent value="resolved">
           {resolvedIssues.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {resolvedIssues.map((issue) => (
-                <IssueCard key={issue.id} issue={issue} />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {getPaginatedIssues(resolvedIssues, currentPage).map((issue) => (
+                  <IssueCard key={issue.id} issue={issue} />
+                ))}
+              </div>
+              {renderPagination(resolvedIssues.length, currentPage, setCurrentPage)}
+            </>
           ) : (
             <p className="text-center text-muted-foreground p-8">
               No resolved issues yet
