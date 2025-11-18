@@ -60,10 +60,13 @@ export const ProfileForm: React.FC = () => {
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
+      // Get public URL with cache-busting parameter
+      const timestamp = Date.now();
       const { data: { publicUrl } } = supabase.storage
         .from("avatars")
         .getPublicUrl(fileName);
+      
+      const cacheBustedUrl = `${publicUrl}?t=${timestamp}`;
 
       // Update profile with new avatar URL
       const { error: updateError } = await supabase
@@ -73,7 +76,7 @@ export const ProfileForm: React.FC = () => {
 
       if (updateError) throw updateError;
 
-      setAvatarUrl(publicUrl);
+      setAvatarUrl(cacheBustedUrl);
       toast({
         title: "Avatar updated",
         description: "Your avatar has been updated successfully.",
