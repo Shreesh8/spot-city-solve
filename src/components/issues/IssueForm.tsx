@@ -462,17 +462,16 @@ const IssueForm: React.FC<IssueFormProps> = ({ issueId, defaultValues, onSubmit,
         throw new Error('User must be logged in to submit an issue.');
       }
 
-      // Email verification check disabled for testing
-      // To re-enable, uncomment the check below after configuring Firebase email settings
-      // if (!issueId && !user.emailVerified) {
-      //   toast({
-      //     variant: "destructive",
-      //     title: "Email Verification Required",
-      //     description: "Please verify your email address before reporting issues.",
-      //   });
-      //   setIsSubmitting(false);
-      //   return;
-      // }
+      // Check email verification for new issues
+      if (!issueId && !user.emailVerified) {
+        toast({
+          variant: "destructive",
+          title: "Email Verification Required",
+          description: "Please verify your email address before reporting issues.",
+        });
+        setIsSubmitting(false);
+        return;
+      }
 
       // Rate limiting check for new issues only (not edits)
       if (!issueId) {

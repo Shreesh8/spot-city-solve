@@ -1,20 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { auth } from "@/integrations/firebase/client";
 import { supabase } from "@/integrations/supabase/client";
 import { logger } from "@/lib/logger";
-import { 
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut,
-  onAuthStateChanged,
-  updateProfile,
-  setPersistence,
-  browserSessionPersistence,
-  browserLocalPersistence
-} from "firebase/auth";
+import { User, Session } from "@supabase/supabase-js";
 
 const SESSION_TIMEOUT = 10 * 60 * 1000; // 10 minutes in milliseconds
 
@@ -41,8 +29,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authInitialized, setAuthInitialized] = useState(false);
   const [lastActivity, setLastActivity] = useState<number>(Date.now());
   const { toast } = useToast();
 
@@ -76,7 +64,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       if (timeSinceActivity >= SESSION_TIMEOUT) {
         try {
-          await signOut(auth);
+          await supabase.auth.signOut();
           toast({
             title: "Session expired",
             description: "You've been logged out due to inactivity",
@@ -91,69 +79,109 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => clearInterval(interval);
   }, [user, lastActivity, toast]);
 
-  // Set up Firebase auth state listener
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        // Create or update profile in Supabase
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            user_id: firebaseUser.uid,
-            email: firebaseUser.email || '',
-            name: firebaseUser.displayName || undefined,
-          }, {
-            onConflict: 'user_id'
-          });
+  // Function to fetch user data from Supabase
+  const fetchUserData = async (supabaseUser: User) => {
+    // Fetch or create profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', supabaseUser.id)
+      .maybeSingle();
 
-        if (profileError) {
-          logger.error('Profile upsert error:', profileError);
-          toast({
-            title: "Profile sync error",
-            description: profileError.message,
-            variant: "destructive",
-          });
-        }
+    if (profileError) {
+      logger.error('Profile fetch error:', profileError);
+    }
 
-        // Fetch user role from Supabase
-        const { data: roleData, error: roleError } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', firebaseUser.uid)
-          .maybeSingle();
-
-        if (roleError) {
-          logger.error('Role fetch error:', roleError);
-        }
-
-        setUser({
-          id: firebaseUser.uid,
-          email: firebaseUser.email || '',
-          name: firebaseUser.displayName || undefined,
-          role: roleData?.role || 'reporter',
-          emailVerified: firebaseUser.emailVerified
+    // Create profile if it doesn't exist
+    if (!profile) {
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert({
+          user_id: supabaseUser.id,
+          email: supabaseUser.email || '',
+          name: supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name || '',
         });
-      } else {
-        setUser(null);
+
+      if (insertError) {
+        logger.error('Profile insert error:', insertError);
+      }
+    }
+
+    // Fetch user role
+    const { data: roleData, error: roleError } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', supabaseUser.id)
+      .maybeSingle();
+
+    if (roleError) {
+      logger.error('Role fetch error:', roleError);
+    }
+
+    // Create default role if it doesn't exist
+    if (!roleData) {
+      const { error: roleInsertError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_id: supabaseUser.id,
+          role: 'reporter'
+        });
+
+      if (roleInsertError) {
+        logger.error('Role insert error:', roleInsertError);
+      }
+    }
+
+    setUser({
+      id: supabaseUser.id,
+      email: supabaseUser.email || '',
+      name: profile?.name || supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name || '',
+      role: roleData?.role || 'reporter',
+      emailVerified: supabaseUser.email_confirmed_at !== null
+    });
+  };
+
+  // Set up Supabase auth state listener
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        
+        if (session?.user) {
+          // Defer Supabase calls with setTimeout to prevent deadlock
+          setTimeout(() => {
+            fetchUserData(session.user);
+          }, 0);
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        fetchUserData(session.user);
       }
       setLoading(false);
-      setAuthInitialized(true);
     });
 
-    return () => unsubscribe();
-  }, [toast]);
+    return () => subscription.unsubscribe();
+  }, []);
 
   const login = async (email: string, password: string, rememberMe: boolean = false): Promise<void> => {
     try {
       setLoading(true);
       
-      // Set persistence based on remember me option
-      await setPersistence(
-        auth, 
-        rememberMe ? browserLocalPersistence : browserSessionPersistence
-      );
-      
-      await signInWithEmailAndPassword(auth, email, password);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
       
       setLastActivity(Date.now());
 
@@ -177,41 +205,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const redirectUrl = `${window.location.origin}/`;
       
-      // Update the user's display name
-      await updateProfile(userCredential.user, {
-        displayName: name
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            full_name: name,
+          }
+        }
       });
 
-      // Create profile in Supabase
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          user_id: userCredential.user.uid,
-          email: email,
-          name: name,
-        });
+      if (error) throw error;
 
-      if (profileError) {
-        console.error('Profile insert error:', profileError);
-      }
+      if (data.user) {
+        // Create profile in Supabase
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: data.user.id,
+            email: email,
+            name: name,
+          });
 
-      // Assign default 'reporter' role in Supabase
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: userCredential.user.uid,
-          role: 'reporter'
-        });
+        if (profileError) {
+          logger.error('Profile insert error:', profileError);
+        }
 
-      if (roleError) {
-        console.error('Role insert error:', roleError);
+        // Assign default 'reporter' role
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: data.user.id,
+            role: 'reporter'
+          });
+
+        if (roleError) {
+          logger.error('Role insert error:', roleError);
+        }
       }
 
       toast({
         title: "Account created",
-        description: "Welcome to CivicSpot!",
+        description: "Welcome to CivicSpot! Please check your email to verify your account.",
       });
     } catch (error: any) {
       toast({
@@ -229,21 +267,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       setLoading(true);
       
-      // Set persistence based on remember me option
-      await setPersistence(
-        auth, 
-        rememberMe ? browserLocalPersistence : browserSessionPersistence
-      );
-      
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        }
+      });
+
+      if (error) throw error;
       
       setLastActivity(Date.now());
-
-      toast({
-        title: "Signed in with Google",
-        description: "Welcome!",
-      });
     } catch (error: any) {
       toast({
         title: "Google sign in failed",
@@ -258,7 +291,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async (): Promise<void> => {
     try {
-      await signOut(auth);
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
 
       toast({
         title: "Logged out",
@@ -279,12 +313,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resendVerificationEmail = async (): Promise<void> => {
     try {
-      if (!auth.currentUser) {
-        throw new Error("No user logged in");
+      if (!user?.email) {
+        throw new Error("No user email found");
       }
 
-      const { sendEmailVerification } = await import("firebase/auth");
-      await sendEmailVerification(auth.currentUser);
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: user.email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+        }
+      });
+
+      if (error) throw error;
 
       toast({
         title: "Verification email sent",

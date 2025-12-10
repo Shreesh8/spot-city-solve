@@ -8,10 +8,6 @@ export const EmailVerificationBanner: React.FC = () => {
   const { user, resendVerificationEmail } = useAuth();
   const [isSending, setIsSending] = React.useState(false);
 
-  // Banner disabled - email verification is optional for now
-  // Remove this return statement to re-enable the banner
-  return null;
-
   if (!user || user.emailVerified) {
     return null;
   }
