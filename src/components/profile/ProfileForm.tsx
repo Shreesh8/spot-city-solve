@@ -28,7 +28,7 @@ export const ProfileForm: React.FC = () => {
         .from("profiles")
         .select("name, avatar_url")
         .eq("user_id", user?.id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
 
